@@ -71,13 +71,10 @@ const userController = {
     try {
       const userData = helpers.getUser(req)?.toJSON()
       const { token } = req.session
-      if (userData.Identity.id === 'admin') {
-        userData.is_admin = true
-      } else {
-        userData.is_admin = false
-      }
+
       delete userData.password
-      delete userData.Identity
+      delete userData.createdAt
+      delete userData.updatedAt
 
       return res.status(200).json({
         data: {
