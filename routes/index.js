@@ -14,7 +14,7 @@ router.post(
 router.get('/current_user', authenticated, userController.getCurrentUser)
 
 router.put('/user/:id', authenticated, upload.fields([
-  { name: 'avatar_img', maxCount: 1 }
+  { name: 'avatar', maxCount: 1 }
 ]), userController.editUser)
 router.post('/user', userController.signUp)
 
