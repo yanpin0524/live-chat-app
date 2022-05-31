@@ -70,16 +70,19 @@ const userController = {
   getCurrentUser: (req, res, next) => {
     try {
       const userData = helpers.getUser(req)?.toJSON()
+      if (!userData) return res.status(500).json({ status: 'error', message: '找不到 userData' })
+
+      const { id, account, name, avatar } = userData
       const { token } = req.session
 
-      delete userData.password
-      delete userData.createdAt
-      delete userData.updatedAt
-
       return res.status(200).json({
+        status: 'success',
         data: {
           token,
-          user: userData
+          id,
+          account,
+          name,
+          avatar
         }
       })
     } catch (err) {
