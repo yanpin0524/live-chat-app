@@ -13,11 +13,18 @@ const userController = {
         expiresIn: '30d'
       })
       req.session.token = token
+      const { id, account, name, avatar, createdAt, updatedAt } = userData
+
       res.json({
         status: 'success',
         data: {
           token,
-          user: userData
+          id,
+          account,
+          name,
+          avatar,
+          createdAt,
+          updatedAt
         }
       })
     } catch (err) {
@@ -54,12 +61,18 @@ const userController = {
         attributes: { exclude: ['password'] }
       })
       userData = userData.toJSON()
+      const { id, account, name, avatar, createdAt, updatedAt } = userData
 
       res.json({
         status: 'success',
         data: {
           token,
-          user: userData
+          id,
+          account,
+          name,
+          avatar,
+          createdAt,
+          updatedAt
         }
       })
     } catch (err) {
