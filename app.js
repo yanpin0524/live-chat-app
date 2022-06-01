@@ -39,6 +39,10 @@ const corsOptions = {
 }
 
 app.use(cors(corsOptions))
+app.use((req, res, next) => {
+  req.io = io
+  return next()
+})
 
 app.use('/api', router)
 app.get('/', (req, res) => res.send('<h1>Hello world !!</h1>'))
