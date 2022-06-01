@@ -57,7 +57,6 @@ app.use((req, res, next) => {
 })
 
 app.use('/api', router)
-// app.get('/', (req, res) => res.send('<h1>Hello world !!</h1>'))
 
 const onlineUsers = []
 
@@ -90,9 +89,9 @@ io.on('connection', function (socket) {
     if (typeof message !== 'object') message = JSON.parse(message)
     redisClient.get(`sender?id=${message.id}`, async (err, sender) => {
       if (err) throw new Error('Error: cache in socket')
-
-      if (sender != null) {
+      if (user != null) {
         console.log('Cache Hit!!') // ===== test code
+        const sender = JSON.parse(user)
         io.emit('new message', { message: message.text, sender })
       } else {
         console.log('Cache Miss!!') // ===== test code
@@ -100,7 +99,6 @@ io.on('connection', function (socket) {
           attributes: ['id', 'account', 'name', 'avatar'],
           raw: true
         })
-        console.log('===== message =====:', message) // ===== test code
         redisClient.setex(`sender?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
         io.emit('new message', { message: message.text, sender })
       }

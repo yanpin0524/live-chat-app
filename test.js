@@ -9,6 +9,7 @@ const app = express()
 app.use(async (req, res, next) => {
   try {
     const RMQProducer = await new Broker().init()
+    console.log('===== test process.env.NODE_ENV =====', process.env.NODE_ENV)
     // we now have access to rabbitMQ
     next()
   } catch (error) {
