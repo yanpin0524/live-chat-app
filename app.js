@@ -9,20 +9,13 @@ const server = http.createServer(app)
 const { Server } = require('socket.io')
 const io = new Server(server, {
   cors: {
-<<<<<<< HEAD
     origin: 'http://localhost:8080',
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
   },
-  allowEIO3: true
-=======
-    origin: 'http://localhost:8080/',
-    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization']
-  }
->>>>>>> main
+  allowEIO3: true,
+  transports: ['websocket', 'polling']
 })
 const cors = require('cors')
 const session = require('express-session')
@@ -50,20 +43,19 @@ app.use((req, res, next) => {
   res.locals.user = getUser(req)
   next()
 })
-<<<<<<< HEAD
 
-// const corsOptions = {
-//   origin: [
-//     process.env.GITHUB_PAGE,
-//     'http://localhost:8080'
-//   ],
-//   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-//   credentials: true,
-//   allowedHeaders: ['Content-Type', 'Authorization']
-// }
+const corsOptions = {
+  origin: [
+    process.env.GITHUB_PAGE,
+    'http://localhost:8080'
+  ],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}
 
-// app.use(cors(corsOptions))
-app.use(cors())
+app.use(cors(corsOptions))
+// app.use(cors())
 
 // const corsOptions = {
 //   origin: '*',
@@ -75,66 +67,11 @@ app.use(cors())
 app.get('/', function (req, res) {
   res.set('Access-Control-Allow-Origin', '*')
   res.end('hello world')
-=======
-// const corsOptions = {
-//   origin: [
-//     process.env.GITHUB_PAGE,
-//     'http://localhost:8080'
-//   ],
-//   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-//   allowedHeaders: ['Content-Type', 'Authorization']
-// }
-// app.use(cors(corsOptions))
-
-app.use((req, res, next) => {
-  req.io = io
-
-  const onlineUsers = []
-
-  io.on('connection', function (socket) {
-    console.log('socket.io 成功連線')
-
-    socket.on('user login', async (message) => {
-      const nweUser = await User.findByPk(message.id, {
-        attributes: ['id', 'account', 'name', 'avatar'],
-        raw: true
-      })
-      if (!onlineUsers.find(user => user.id === nweUser.id)) onlineUsers.push(nweUser)
-      io.emit('user joins', nweUser)
-      io.emit('online users', onlineUsers)
-    })
-
-    socket.on('user logout', async (message) => {
-      const logoutUser = await User.findByPk(message.id, {
-        attributes: ['id', 'account', 'name', 'avatar'],
-        raw: true
-      })
-
-      onlineUsers.forEach((user, index) => {
-        if (user.id === message.id) onlineUsers.splice(index, 1)
-      })
-
-      io.emit('user leaves', logoutUser)
-      io.emit('online users', onlineUsers)
-    })
-
-    socket.on('user send message', async (message) => {
-      const sender = await User.findByPk(message.id, {
-        attributes: ['id', 'account', 'name', 'avatar'],
-        raw: true
-      })
-
-      io.emit('new message', { message: message.text, sender })
-    })
-  })
-  return next()
->>>>>>> main
 })
 
 app.use('/api', router)
 // app.get('/', (req, res) => res.send('<h1>Hello world !!</h1>'))
 
-<<<<<<< HEAD
 const onlineUsers = []
 
 io.on('connection', function (socket) {
@@ -185,8 +122,6 @@ io.on('connection', function (socket) {
   })
 })
 
-=======
->>>>>>> main
 server.listen(port, () =>
   console.log(`Example app listening on http://localhost:${port}`)
 )
