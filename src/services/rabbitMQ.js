@@ -10,7 +10,6 @@ class MessageBroker {
   }
 
   async init () {
-    console.log('process.env.RABBITMQ_URL', process.env.RABBITMQ_URL) // test
     this.connection = await amqp.connect(process.env.RABBITMQ_URL || 'amqp://localhost')
     this.channel = await this.connection.createChannel()
     return this
