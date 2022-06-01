@@ -81,6 +81,8 @@ io.on('connection', function (socket) {
   })
 
   socket.on('user send message', async (message) => {
+    if (typeof message !== 'object') JSON.parse(message)
+
     const sender = await User.findByPk(message.id, {
       attributes: ['id', 'account', 'name', 'avatar'],
       raw: true
