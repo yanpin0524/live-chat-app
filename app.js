@@ -61,13 +61,8 @@ const onlineUsers = []
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
 
-  socket.on('user login', async (message) => {
-    const nweUser = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
-    })
-    if (!onlineUsers.find(user => user.id === nweUser.id)) onlineUsers.push(nweUser)
-    io.emit('user joins', nweUser)
+  socket.on('new user', (newUser) => {
+    if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
     io.emit('online users', onlineUsers)
   })
 
