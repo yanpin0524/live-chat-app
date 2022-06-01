@@ -24,6 +24,7 @@ const passport = require('./config/passport')
 const router = require('./routes')
 const { getUser } = require('./_helpers')
 const { User } = require('./models')
+const { Console } = require('console')
 
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
@@ -81,6 +82,8 @@ io.on('connection', function (socket) {
   })
 
   socket.on('user send message', async (message) => {
+    if (typeof message !== 'object') JSON.parse(message)
+
     const sender = await User.findByPk(message.id, {
       attributes: ['id', 'account', 'name', 'avatar'],
       raw: true
