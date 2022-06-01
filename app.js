@@ -15,7 +15,7 @@ const io = new Server(server, {
     allowedHeaders: ['Content-Type', 'Authorization']
   },
   allowEIO3: true,
-  transports: ['websocket', 'polling']
+  // transports: ['websocket', 'polling']
 })
 const cors = require('cors')
 const session = require('express-session')
@@ -59,7 +59,6 @@ app.use((req, res, next) => {
 })
 
 app.use('/api', router)
-// app.get('/', (req, res) => res.send('<h1>Hello world !!</h1>'))
 
 const onlineUsers = []
 
@@ -91,11 +90,12 @@ io.on('connection', function (socket) {
   })
 
   socket.on('user send message', async message => {
-    redisClient.get(`sender?id=${message.id}`, async (err, sender) => {
+    message = JSON.parse(message)
+    redisClient.get(`sender?id=${message.id}`, async (err, user) => {
       if (err) throw new Error('Error: cache in socket')
-
-      if (sender != null) {
+      if (user != null) {
         console.log('Cache Hit!!') // ===== test code
+        const sender = JSON.parse(user)
         io.emit('new message', { message: message.text, sender })
       } else {
         console.log('Cache Miss!!') // ===== test code
@@ -103,50 +103,10 @@ io.on('connection', function (socket) {
           attributes: ['id', 'account', 'name', 'avatar'],
           raw: true
         })
-        console.log('===== message =====:', message) // ===== test code
         redisClient.setex(`sender?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
         io.emit('new message', { message: message.text, sender })
       }
     })
-  })
-})
-
-const onlineUsers = []
-
-io.on('connection', function (socket) {
-  console.log('socket.io 成功連線')
-
-  socket.on('user login', async (message) => {
-    const nweUser = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
-    })
-    if (!onlineUsers.find(user => user.id === nweUser.id)) onlineUsers.push(nweUser)
-    io.emit('user joins', nweUser)
-    io.emit('online users', onlineUsers)
-  })
-
-  socket.on('user logout', async (message) => {
-    const logoutUser = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
-    })
-
-    onlineUsers.forEach((user, index) => {
-      if (user.id === message.id) onlineUsers.splice(index, 1)
-    })
-
-    io.emit('user leaves', logoutUser)
-    io.emit('online users', onlineUsers)
-  })
-
-  socket.on('user send message', async (message) => {
-    const sender = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
-    })
-
-    io.emit('new message', { message: message.text, sender })
   })
 })
 
