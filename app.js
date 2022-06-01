@@ -36,16 +36,16 @@ app.use((req, res, next) => {
   res.locals.user = getUser(req)
   next()
 })
-const corsOptions = {
-  origin: [
-    process.env.GITHUB_PAGE,
-    'http://localhost:8080'
-  ],
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  allowedHeaders: ['Content-Type', 'Authorization']
-}
+// const corsOptions = {
+//   origin: [
+//     process.env.GITHUB_PAGE,
+//     'http://localhost:8080'
+//   ],
+//   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+//   allowedHeaders: ['Content-Type', 'Authorization']
+// }
+// app.use(cors(corsOptions))
 
-app.use(cors(corsOptions))
 app.use((req, res, next) => {
   req.io = io
 
