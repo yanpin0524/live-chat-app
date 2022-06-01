@@ -3,16 +3,9 @@ const bcrypt = require('bcryptjs')
 const { User } = require('../../models')
 const helpers = require('../../_helpers')
 const { Op } = require('sequelize')
-// const { createClient } = require('redis')
-// const client = createClient()
-// client.on('error', (err) => console.log('Redis Client Error', err))
-// await client.connect()
 const Redis = require('redis')
 const redisClient = Redis.createClient()
 const DEFAULT_EXPIRATION = 3600
-
-// client.on('error', (err) => console.log('Redis Client Error', err))
-// client.connect()
 
 const userController = {
   signIn: async (req, res, next) => {
@@ -92,14 +85,15 @@ const userController = {
 
   getCurrentUser: async (req, res, next) => {
     try {
-      redisClient.get('currentUser', (err, user) => {
+      const id = helpers.getUser(req)?.toJSON().id
+      redisClient.get(`currentUser?id=${id}`, (err, user) => {
         if (err) return res.json(err)
 
         if (user != null) {
-          console.log('Cache Hit!!')
+          console.log('Cache Hit!!') // ===== test code
           return res.json(JSON.parse(user))
         } else {
-          console.log('Cache Miss!!')
+          console.log('Cache Miss!!') // ===== test code
           const userData = helpers.getUser(req)?.toJSON()
           if (!userData) return res.status(500).json({ status: 'error', message: '未存取到登入資料' })
 
@@ -114,7 +108,7 @@ const userController = {
             avatar
           }
 
-          redisClient.setex('currentUser', DEFAULT_EXPIRATION, JSON.stringify(response))
+          redisClient.setex(`currentUser?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(response))
 
           return res.status(200).json(response)
         }
