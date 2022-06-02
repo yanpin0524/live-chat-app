@@ -61,12 +61,12 @@ const onlineUsers = []
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
 
-  socket.on('new user', (newUser) => {
+  socket.on('new_user', (newUser) => {
     if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
-    io.emit('online users', onlineUsers)
+    io.emit('online_users', onlineUsers)
   })
 
-  socket.on('user logout', async (message) => {
+  socket.on('user_logout', async (message) => {
     const logoutUser = await User.findByPk(message.id, {
       attributes: ['id', 'account', 'name', 'avatar'],
       raw: true
@@ -76,11 +76,14 @@ io.on('connection', function (socket) {
       if (user.id === message.id) onlineUsers.splice(index, 1)
     })
 
-    io.emit('user leaves', logoutUser)
-    io.emit('online users', onlineUsers)
+    io.emit('user_leaves', {
+      status: 'logout',
+      data: logoutUser
+    })
+    io.emit('online_users', onlineUsers)
   })
 
-  socket.on('user send message', async (message) => {
+  socket.on('user_send_message', async (message) => {
     if (typeof message !== 'object') JSON.parse(message)
 
     const sender = await User.findByPk(message.id, {
@@ -88,7 +91,7 @@ io.on('connection', function (socket) {
       raw: true
     })
 
-    io.emit('new message', { message: message.text, sender })
+    io.emit('new_message', { message: message.text, sender })
   })
 })
 
