@@ -16,24 +16,17 @@ const userController = {
         expiresIn: '30d'
       })
       req.session.token = token
-      const { id, account, name, avatar, createdAt, updatedAt } = userData
 
-      req.io.emit('user joins', {
-        data: {
-          id,
-          account,
-          name,
-          avatar
-        }
-      })
+      const { id, account, name, avatar, createdAt, updatedAt } = userData
+      const data = { id, account, name, avatar }
+      redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(data))
+
+      req.io.emit('user joins', { data })
       res.json({
         status: 'success',
         data: {
           token,
-          id,
-          account,
-          name,
-          avatar,
+          ...data,
           createdAt,
           updatedAt
         }
@@ -73,15 +66,14 @@ const userController = {
       })
       userData = userData.toJSON()
       const { id, account, name, avatar, createdAt, updatedAt } = userData
+      const data = { id, account, name, avatar }
+      redisClient.setex(`currentUser?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(data))
 
       res.json({
         status: 'success',
         data: {
           token,
-          id,
-          account,
-          name,
-          avatar,
+          ...data,
           createdAt,
           updatedAt
         }
@@ -94,19 +86,22 @@ const userController = {
   getCurrentUser: async (req, res, next) => {
     try {
       const id = helpers.getUser(req)?.toJSON().id
-      redisClient.get(`currentUser?id=${id}`, (err, user) => {
-        if (err) return res.json(err)
+      const { token } = req.session
+      redisClient.get(`user?id=${id}`, (err, user) => {
+        if (err) next()
 
         if (user != null) {
-          console.log('Cache Hit!!') // ===== test code
-          return res.json(JSON.parse(user))
+          user = JSON.parse(user)
+          return res.json({
+            status: 'success',
+            token,
+            ...user
+          })
         } else {
-          console.log('Cache Miss!!') // ===== test code
           const userData = helpers.getUser(req)?.toJSON()
           if (!userData) return res.status(500).json({ status: 'error', message: '未存取到登入資料' })
 
           const { id, account, name, avatar } = userData
-          const { token } = req.session
           const response = {
             status: 'success',
             token,
@@ -116,8 +111,7 @@ const userController = {
             avatar
           }
 
-          redisClient.setex(`currentUser?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(response))
-
+          redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(response))
           return res.status(200).json(response)
         }
       })
@@ -129,12 +123,11 @@ const userController = {
   editUser: async (req, res, next) => {
     try {
       const me = helpers.getUser(req)
-      if (!me) return res.status(500).json({ status: 'error', message: '未存取到登入資料' })
+      if (!me) return res.status(409).json({ status: 'error', message: '未存取到登入資料' })
+      if (me.id !== Number(req.params.id)) return res.status(401).json({ status: 'error', message: '你沒有編輯權限' })
 
       const { files } = req
       const avatar = await helpers.imgurFileHandler(files?.avatar?.[0]) || me.avatar
-
-      if (me.id !== Number(req.params.id)) return res.status(401).json({ status: 'error', message: '你沒有編輯權限' })
 
       const { account, name } = req.body
       const existedUser = await User.findAll({
@@ -147,24 +140,25 @@ const userController = {
       })
       if (existedUser.length) throw new Error('使用者已經存在')
 
-      const user = await User.findByPk(req.params.id)
-      if (!user) throw new Error('沒有找到相關的使用者資料')
-
-      const password = await bcrypt.hash(req.body.password, 10) || user.password
-      const updatedUser = await user.update({
-        account,
-        name,
-        password,
-        avatar
+      const user = await User.findByPk(req.params.id, {
+        attributes: { exclude: ['password', 'createdAt', 'updatedAt'] },
+        raw: true
       })
-      const data = updatedUser.toJSON()
-      delete data.password
-      delete data.createdAt
-      delete data.updatedAt
+      if (!user) throw new Error('沒有找到相關的使用者資料')
+      console.log(JSON.parse('===== user =====', user))
+      const password = await bcrypt.hash(req.body.password, 10) || user.password
+      // const updatedUser = await user.update(user)
+      // console.log('===== updatedUser =====', updatedUser)
+      // redisClient.setex(`user?id=${updatedUser.id}`, DEFAULT_EXPIRATION, JSON.stringify({
+      //   id: updatedUser.id,
+      //   account: req.body.account,
+      //   name,
+      //   avatar
+      // }))
 
       return res.status(200).json({
-        status: 'success',
-        data
+        status: 'success'
+        // updatedUser
       })
     } catch (err) {
       next(err)
