@@ -61,8 +61,15 @@ const onlineUsers = []
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
 
-  socket.on('new_user', (newUser) => {
+  socket.on('new_login', (newUser) => {
     if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
+
+    io.emit('user_joins', {
+      status: 'login',
+      data: {
+        newUser
+      }
+    })
     io.emit('online_users', onlineUsers)
   })
 
