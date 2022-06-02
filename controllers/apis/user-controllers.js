@@ -21,7 +21,7 @@ const userController = {
       const data = { id, account, name, avatar }
       redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(data))
 
-      req.io.emit('user joins', { data })
+      req.io.emit('user_joins', { status: 'login', ...data })
       res.json({
         status: 'success',
         data: {

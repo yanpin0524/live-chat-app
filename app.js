@@ -22,20 +22,12 @@ const io = new Server(server, {
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
   },
-  allowEIO3: true,
-  transports: ['websocket', 'polling']
+  allowEIO3: true
 })
 
 const Redis = require('redis')
 const redisClient = Redis.createClient()
 const DEFAULT_EXPIRATION = 3600
-
-// const Broker = require('./src/services/rabbitMQ')
-// const fileUpload = require('express-fileupload')
-// const publishToExchange = require('./src/queueWorkers/producer')
-// const { v4: uuid } = require('uuid')
-// const fs = require('fs')
-// const { promisify } = require('util')
 
 const corsOptions = {
   origin: [
@@ -46,6 +38,10 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 }
 app.use(cors(corsOptions))
+
+const Redis = require('redis')
+const redisClient = Redis.createClient()
+const DEFAULT_EXPIRATION = 3600
 
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
@@ -61,49 +57,6 @@ app.use((req, res, next) => {
   next()
 })
 
-// app.use(fileUpload())
-// const RMQProducer = new Broker().init()
-
-// app.use(async (req, res, next) => {
-//   try {
-//     req.RMQProducer = await RMQProducer
-//     next()
-//   } catch (error) {
-//     process.exit(1)
-//   }
-// })
-
-// const saveImage = data => {
-//   const writeFile = promisify(fs.writeFile)
-//   return new Promise((resolve, reject) => {
-//     if (!data) {
-//       reject('File not available!')
-//     }
-//     try {
-//       const fileName = `img_${uuid()}.jpg`
-
-//       writeFile(`./src/uploads/original/${fileName}`, data)
-
-//       resolve(fileName)
-//     } catch (error) {}
-//   })
-// }
-
-// // your routes here
-// app.post('/upload', async (req, res) => {
-//   const { data } = req.files.image
-//   try {
-//     const message = await saveImage(data)
-//     await publishToExchange(req.RMQProducer, {
-//       message,
-//       routingKey: 'image'
-//     })
-//     res.status(200).send('File uploaded successfully!')
-//   } catch (error) {
-//     res.status(400).send('File not uploaded!')
-//   }
-// })
-
 app.use((req, res, next) => {
   req.io = io
   return next()
@@ -116,14 +69,18 @@ const onlineUsers = []
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
 
-  socket.on('new user', newUser => {
+  socket.on('new_user', newUser => {
     if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
     if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
-    io.emit('online users', onlineUsers)
+    io.emit('online_users', onlineUsers)
   })
 
-  socket.on('user logout', async message => {
+  socket.on('user_logout', async message => {
     if (typeof message !== 'object') message = JSON.parse(message)
+    const logoutUser = await User.findByPk(message.id, {
+      attributes: ['id', 'account', 'name', 'avatar'],
+      raw: true
+    })
 
     redisClient.get(`user?id=${message.id}`, async (err, user) => {
       if (err) throw new Error('Error: cache in socket')
@@ -132,32 +89,25 @@ io.on('connection', function (socket) {
         onlineUsers.forEach((user, index) => {
           if (user.id === message.id) onlineUsers.splice(index, 1)
         })
-
-        io.emit('user leaves', logoutUser)
-        io.emit('online users', onlineUsers)
-      } else {
-        const logoutUser = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        onlineUsers.forEach((user, index) => {
-          if (user.id === message.id) onlineUsers.splice(index, 1)
-        })
-
-        io.emit('user leaves', logoutUser)
-        io.emit('online users', onlineUsers)
       }
+
+    io.emit('user_leaves', {
+      status: 'logout',
+      data: logoutUser
     })
+    io.emit('online_users', onlineUsers)
   })
 
-  socket.on('user send message', async message => {
+  socket.on('user_send_message', async message => {
     if (typeof message !== 'object') message = JSON.parse(message)
-    redisClient.get(`user?id=${message.id}`, async (err, user) => {
+    redisClient.get(`sender?id=${message.id}`, async (err, sender) => {
       if (err) throw new Error('Error: cache in socket')
       if (user != null) {
+        console.log('Cache Hit!!') // ===== test code
         const sender = JSON.parse(user)
         io.emit('new message', { message: message.text, sender })
       } else {
+        console.log('Cache Miss!!') // ===== test code
         const sender = await User.findByPk(message.id, {
           attributes: ['id', 'account', 'name', 'avatar'],
           raw: true

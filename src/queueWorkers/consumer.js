@@ -9,8 +9,6 @@ const { fileExists } = require('../utils/functions')
 const RMQConsumer = new Broker().init()
 const pipeline = promisify(require('stream').pipeline)
 const EXCHANGE = 'upload'
-const path = require('path')
-const { dirname } = require('path')
 
 /**
  * Process 1:1 message and stores in db, also processes group messages 1 by 1
