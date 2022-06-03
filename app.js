@@ -96,7 +96,7 @@ io.on('connection', function (socket) {
       raw: true
     })
 
-    io.emit('new_message', { message: message.text, sender })
+    io.emit('new_message', { message: message.text, createdAt: Date(), sender })
   })
 })
 
