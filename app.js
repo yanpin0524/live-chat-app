@@ -39,10 +39,6 @@ const corsOptions = {
 }
 app.use(cors(corsOptions))
 
-const Redis = require('redis')
-const redisClient = Redis.createClient()
-const DEFAULT_EXPIRATION = 3600
-
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
 
@@ -77,43 +73,51 @@ io.on('connection', function (socket) {
 
   socket.on('user_logout', async message => {
     if (typeof message !== 'object') message = JSON.parse(message)
-    const logoutUser = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
-    })
 
     redisClient.get(`user?id=${message.id}`, async (err, user) => {
       if (err) throw new Error('Error: cache in socket')
       if (user != null) {
-        const logoutUser = user
+        const logoutUser = JSON.parse(user)
         onlineUsers.forEach((user, index) => {
           if (user.id === message.id) onlineUsers.splice(index, 1)
         })
+        io.emit('user_leaves', {
+          status: 'logout',
+          data: logoutUser
+        })
+        io.emit('online_users', onlineUsers)
+      } else {
+        const logoutUser = await User.findByPk(message.id, {
+          attributes: ['id', 'account', 'name', 'avatar'],
+          raw: true
+        })
+        onlineUsers.forEach((user, index) => {
+          if (user.id === message.id) onlineUsers.splice(index, 1)
+        })
+        io.emit('user_leaves', {
+          status: 'logout',
+          data: logoutUser
+        })
+        io.emit('online_users', onlineUsers)
       }
-
-    io.emit('user_leaves', {
-      status: 'logout',
-      data: logoutUser
     })
-    io.emit('online_users', onlineUsers)
   })
 
   socket.on('user_send_message', async message => {
     if (typeof message !== 'object') message = JSON.parse(message)
-    redisClient.get(`sender?id=${message.id}`, async (err, sender) => {
+
+    redisClient.get(`user?id=${message.id}`, async (err, user) => {
       if (err) throw new Error('Error: cache in socket')
       if (user != null) {
-        console.log('Cache Hit!!') // ===== test code
         const sender = JSON.parse(user)
         io.emit('new message', { message: message.text, sender })
       } else {
-        console.log('Cache Miss!!') // ===== test code
         const sender = await User.findByPk(message.id, {
           attributes: ['id', 'account', 'name', 'avatar'],
           raw: true
         })
         redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
-        io.emit('new message', { message: message.text, sender })
+        io.emit('new_message', { message: message.text, sender })
       }
     })
   })
@@ -122,13 +126,5 @@ io.on('connection', function (socket) {
 server.listen(port, () =>
   console.log(`Example app listening on http://localhost:${port}`)
 )
-
-// process.on('SIGINT', async () => {
-//   process.exit(1)
-// })
-// process.on('exit', code => {
-//   RMQProducer.channel.close()
-//   RMQProducer.connection.close()
-// })
 
 module.exports = app
