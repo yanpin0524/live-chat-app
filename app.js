@@ -4,6 +4,14 @@ if (process.env.NODE_ENV !== 'production') {
 const express = require('express')
 const port = process.env.PORT || 3000
 const app = express()
+const cors = require('cors')
+const session = require('express-session')
+const SESSION_SECRET = process.env.SESSION_SECRET
+const passport = require('./config/passport')
+const router = require('./routes')
+const { getUser } = require('./_helpers')
+const { User } = require('./models')
+
 const http = require('http')
 const server = http.createServer(app)
 const { Server } = require('socket.io')
@@ -14,16 +22,22 @@ const io = new Server(server, {
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
   },
-  allowEIO3: true,
-  transports: ['websocket', 'polling']
+  allowEIO3: true
 })
-const cors = require('cors')
-const session = require('express-session')
-const SESSION_SECRET = process.env.SESSION_SECRET
-const passport = require('./config/passport')
-const router = require('./routes')
-const { getUser } = require('./_helpers')
-const { User } = require('./models')
+
+const Redis = require('redis')
+const redisClient = Redis.createClient()
+const DEFAULT_EXPIRATION = 3600
+
+const corsOptions = {
+  origin: [
+    process.env.GITHUB_PAGE,
+    'http://localhost:8080'
+  ],
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+  allowedHeaders: ['Content-Type', 'Authorization']
+}
+app.use(cors(corsOptions))
 
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
@@ -38,15 +52,6 @@ app.use((req, res, next) => {
   res.locals.user = getUser(req)
   next()
 })
-const corsOptions = {
-  origin: [
-    process.env.GITHUB_PAGE,
-    'http://localhost:8080'
-  ],
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  allowedHeaders: ['Content-Type', 'Authorization']
-}
-app.use(cors(corsOptions))
 
 app.use((req, res, next) => {
   req.io = io
@@ -54,14 +59,14 @@ app.use((req, res, next) => {
 })
 
 app.use('/api', router)
-app.get('/', (req, res) => res.send('<h1>Hello world !!</h1>'))
 
 const onlineUsers = []
 
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
 
-  socket.on('user_login', (newUser) => {
+  socket.on('user_login', newUser => {
+    if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
     if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
 
     io.emit('user_joins', {
@@ -71,32 +76,55 @@ io.on('connection', function (socket) {
     io.emit('online_users', onlineUsers)
   })
 
-  socket.on('user_logout', async (message) => {
-    const logoutUser = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
-    })
+  socket.on('user_logout', async message => {
+    if (typeof message !== 'object') message = JSON.parse(message)
 
-    onlineUsers.forEach((user, index) => {
-      if (user.id === message.id) onlineUsers.splice(index, 1)
+    redisClient.get(`user?id=${message.id}`, async (err, user) => {
+      if (err) throw new Error('Error: cache in socket')
+      if (user != null) {
+        const logoutUser = JSON.parse(user)
+        onlineUsers.forEach((user, index) => {
+          if (user.id === message.id) onlineUsers.splice(index, 1)
+        })
+        io.emit('user_leaves', {
+          status: 'logout',
+          data: logoutUser
+        })
+        io.emit('online_users', onlineUsers)
+      } else {
+        const logoutUser = await User.findByPk(message.id, {
+          attributes: ['id', 'account', 'name', 'avatar'],
+          raw: true
+        })
+        onlineUsers.forEach((user, index) => {
+          if (user.id === message.id) onlineUsers.splice(index, 1)
+        })
+        io.emit('user_leaves', {
+          status: 'logout',
+          data: logoutUser
+        })
+        io.emit('online_users', onlineUsers)
+      }
     })
-
-    io.emit('user_leaves', {
-      status: 'logout',
-      data: logoutUser
-    })
-    io.emit('online_users', onlineUsers)
   })
 
-  socket.on('user_send_message', async (message) => {
-    if (typeof message !== 'object') JSON.parse(message)
+  socket.on('user_send_message', async message => {
+    if (typeof message !== 'object') message = JSON.parse(message)
 
-    const sender = await User.findByPk(message.id, {
-      attributes: ['id', 'account', 'name', 'avatar'],
-      raw: true
+    redisClient.get(`user?id=${message.id}`, async (err, user) => {
+      if (err) io.emit('error_message', { status: 'Redis error', message })
+      if (user != null) {
+        const sender = JSON.parse(user)
+        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'redis' })
+      } else {
+        const sender = await User.findByPk(message.id, {
+          attributes: ['id', 'account', 'name', 'avatar'],
+          raw: true
+        })
+        redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
+        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'db' })
+      }
     })
-
-    io.emit('new_message', { message: message.text, createdAt: Date(), sender })
   })
 })
 

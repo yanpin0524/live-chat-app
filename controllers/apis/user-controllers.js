@@ -3,6 +3,9 @@ const bcrypt = require('bcryptjs')
 const { User } = require('../../models')
 const helpers = require('../../_helpers')
 const { Op } = require('sequelize')
+const Redis = require('redis')
+const redisClient = Redis.createClient()
+const DEFAULT_EXPIRATION = 3600
 
 const userController = {
   signIn: async (req, res, next) => {
@@ -13,7 +16,9 @@ const userController = {
         expiresIn: '30d'
       })
       req.session.token = token
+
       const { id, account, name, avatar, createdAt, updatedAt } = userData
+      redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify({ id, account, name, avatar }))
 
       res.json({
         status: 'success',
@@ -62,6 +67,7 @@ const userController = {
       })
       userData = userData.toJSON()
       const { id, account, name, avatar, createdAt, updatedAt } = userData
+      redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify({ id, account, name, avatar }))
 
       res.json({
         status: 'success',
@@ -80,22 +86,36 @@ const userController = {
     }
   },
 
-  getCurrentUser: (req, res, next) => {
+  getCurrentUser: async (req, res, next) => {
     try {
-      const userData = helpers.getUser(req)?.toJSON()
-      if (!userData) return res.status(500).json({ status: 'error', message: '未存取到登入資料' })
-
-      const { id, account, name, avatar } = userData
+      const id = helpers.getUser(req)?.toJSON().id
       const { token } = req.session
+      redisClient.get(`user?id=${id}`, (err, user) => {
+        if (err) next()
 
-      return res.status(200).json({
-        status: 'success',
-        data: {
-          token,
-          id,
-          account,
-          name,
-          avatar
+        if (user != null) {
+          user = JSON.parse(user)
+          return res.json({
+            status: 'success',
+            token,
+            ...user
+          })
+        } else {
+          const userData = helpers.getUser(req)?.toJSON()
+          if (!userData) return res.status(500).json({ status: 'error', message: '未存取到登入資料' })
+
+          const { id, account, name, avatar } = userData
+          const response = {
+            status: 'success',
+            token,
+            id,
+            account,
+            name,
+            avatar
+          }
+
+          redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(response))
+          return res.status(200).json(response)
         }
       })
     } catch (err) {
@@ -106,12 +126,11 @@ const userController = {
   editUser: async (req, res, next) => {
     try {
       const me = helpers.getUser(req)
-      if (!me) return res.status(500).json({ status: 'error', message: '未存取到登入資料' })
+      if (!me) return res.status(510).json({ status: 'error', message: '未存取到登入資料' })
+      if (me.id !== Number(req.params.id)) return res.status(510).json({ status: 'error', message: '你沒有編輯權限' })
 
       const { files } = req
       const avatar = await helpers.imgurFileHandler(files?.avatar?.[0]) || me.avatar
-
-      if (me.id !== Number(req.params.id)) return res.status(401).json({ status: 'error', message: '你沒有編輯權限' })
 
       const { account, name } = req.body
       const existedUser = await User.findAll({
@@ -122,26 +141,34 @@ const userController = {
           ]
         }
       })
-      if (existedUser.length) throw new Error('使用者已經存在')
+      if (existedUser.length) return res.status(510).json({ status: 'error', message: '使用者已經存在' })
 
       const user = await User.findByPk(req.params.id)
       if (!user) throw new Error('沒有找到相關的使用者資料')
 
-      const password = await bcrypt.hash(req.body.password, 10) || user.password
-      const updatedUser = await user.update({
-        account,
+      const password = await bcrypt.hash(req.body.password, 10)
+      let updatedUser = await user.update({
         name,
-        password,
-        avatar
+        account,
+        avatar,
+        password
       })
-      const data = updatedUser.toJSON()
-      delete data.password
-      delete data.createdAt
-      delete data.updatedAt
+
+      updatedUser = JSON.parse(JSON.stringify(updatedUser))
+      delete updatedUser.password
+
+      redisClient.setex(`user?id=${updatedUser.id}`, DEFAULT_EXPIRATION, JSON.stringify({
+        id: updatedUser.id,
+        account: updatedUser.account,
+        name: updatedUser.name,
+        avatar: updatedUser.avatar
+      }))
 
       return res.status(200).json({
         status: 'success',
-        data
+        data: {
+          ...updatedUser
+        }
       })
     } catch (err) {
       next(err)
