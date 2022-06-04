@@ -18,15 +18,6 @@ const userController = {
       req.session.token = token
       const { id, account, name, avatar, createdAt, updatedAt } = userData
 
-      req.io.emit('user_joins', {
-        status: 'login',
-        data: {
-          id,
-          account,
-          name,
-          avatar
-        }
-      })
       res.json({
         status: 'success',
         data: {
