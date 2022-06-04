@@ -18,15 +18,16 @@ const userController = {
       req.session.token = token
 
       const { id, account, name, avatar, createdAt, updatedAt } = userData
-      const data = { id, account, name, avatar }
-      redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(data))
+      redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify({ id, account, name, avatar }))
 
-      req.io.emit('user_joins', { status: 'login', ...data })
       res.json({
         status: 'success',
         data: {
           token,
-          ...data,
+          id,
+          account,
+          name,
+          avatar,
           createdAt,
           updatedAt
         }
@@ -66,14 +67,16 @@ const userController = {
       })
       userData = userData.toJSON()
       const { id, account, name, avatar, createdAt, updatedAt } = userData
-      const data = { id, account, name, avatar }
-      redisClient.setex(`currentUser?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify(data))
+      redisClient.setex(`user?id=${id}`, DEFAULT_EXPIRATION, JSON.stringify({ id, account, name, avatar }))
 
       res.json({
         status: 'success',
         data: {
           token,
-          ...data,
+          id,
+          account,
+          name,
+          avatar,
           createdAt,
           updatedAt
         }
@@ -123,8 +126,8 @@ const userController = {
   editUser: async (req, res, next) => {
     try {
       const me = helpers.getUser(req)
-      if (!me) return res.status(409).json({ status: 'error', message: '未存取到登入資料' })
-      if (me.id !== Number(req.params.id)) return res.status(401).json({ status: 'error', message: '你沒有編輯權限' })
+      if (!me) return res.status(510).json({ status: 'error', message: '未存取到登入資料' })
+      if (me.id !== Number(req.params.id)) return res.status(510).json({ status: 'error', message: '你沒有編輯權限' })
 
       const { files } = req
       const avatar = await helpers.imgurFileHandler(files?.avatar?.[0]) || me.avatar
@@ -138,27 +141,34 @@ const userController = {
           ]
         }
       })
-      if (existedUser.length) throw new Error('使用者已經存在')
+      if (existedUser.length) return res.status(510).json({ status: 'error', message: '使用者已經存在' })
 
-      const user = await User.findByPk(req.params.id, {
-        attributes: { exclude: ['password', 'createdAt', 'updatedAt'] },
-        raw: true
-      })
+      const user = await User.findByPk(req.params.id)
       if (!user) throw new Error('沒有找到相關的使用者資料')
-      console.log(JSON.parse('===== user =====', user))
-      const password = await bcrypt.hash(req.body.password, 10) || user.password
-      // const updatedUser = await user.update(user)
-      // console.log('===== updatedUser =====', updatedUser)
-      // redisClient.setex(`user?id=${updatedUser.id}`, DEFAULT_EXPIRATION, JSON.stringify({
-      //   id: updatedUser.id,
-      //   account: req.body.account,
-      //   name,
-      //   avatar
-      // }))
+
+      const password = await bcrypt.hash(req.body.password, 10)
+      let updatedUser = await user.update({
+        name,
+        account,
+        avatar,
+        password
+      })
+
+      updatedUser = JSON.parse(JSON.stringify(updatedUser))
+      delete updatedUser.password
+
+      redisClient.setex(`user?id=${updatedUser.id}`, DEFAULT_EXPIRATION, JSON.stringify({
+        id: updatedUser.id,
+        account: updatedUser.account,
+        name: updatedUser.name,
+        avatar: updatedUser.avatar
+      }))
 
       return res.status(200).json({
-        status: 'success'
-        // updatedUser
+        status: 'success',
+        data: {
+          ...updatedUser
+        }
       })
     } catch (err) {
       next(err)

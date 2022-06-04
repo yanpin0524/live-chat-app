@@ -112,21 +112,19 @@ io.on('connection', function (socket) {
     if (typeof message !== 'object') message = JSON.parse(message)
 
     redisClient.get(`user?id=${message.id}`, async (err, user) => {
-      if (err) throw new Error('Error: cache in socket')
+      if (err) io.emit('error_message', { status: 'Redis error', message })
       if (user != null) {
         const sender = JSON.parse(user)
-        io.emit('new message', { message: message.text, sender })
+        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'redis' })
       } else {
         const sender = await User.findByPk(message.id, {
           attributes: ['id', 'account', 'name', 'avatar'],
           raw: true
         })
         redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
-        io.emit('new_message', { message: message.text, sender })
+        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'db' })
       }
     })
-
-    io.emit('new_message', { message: message.text, createdAt: Date(), sender })
   })
 })
 
