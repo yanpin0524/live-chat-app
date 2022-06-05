@@ -1,7 +1,7 @@
 const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const { User } = require('../../models')
-const helpers = require('../../_helpers')
+const helpers = require('../../utilities/_helpers')
 const { Op } = require('sequelize')
 const Redis = require('redis')
 const redisClient = Redis.createClient()

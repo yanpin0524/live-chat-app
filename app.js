@@ -9,9 +9,10 @@ const session = require('express-session')
 const SESSION_SECRET = process.env.SESSION_SECRET
 const passport = require('./config/passport')
 const router = require('./routes')
-const { getUser } = require('./_helpers')
+const { getUser } = require('./utilities/_helpers')
+const corsOptions = require('./config/cors')
 const { User } = require('./models')
-
+const getOrSetCache = require('./utilities/cache')
 const http = require('http')
 const server = http.createServer(app)
 const { Server } = require('socket.io')
@@ -28,20 +29,7 @@ const io = new Server(server, {
   allowEIO3: true
 })
 
-const Redis = require('redis')
-const redisClient = Redis.createClient()
-const DEFAULT_EXPIRATION = 3600
-
-const corsOptions = {
-  origin: [
-    process.env.GITHUB_PAGE,
-    'http://localhost:8080'
-  ],
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-  allowedHeaders: ['Content-Type', 'Authorization']
-}
 app.use(cors(corsOptions))
-
 app.use(express.urlencoded({ extended: true }))
 app.use(express.json())
 
@@ -56,17 +44,15 @@ app.use((req, res, next) => {
   next()
 })
 
+app.use('/api', router)
 app.use((req, res, next) => {
   req.io = io
   return next()
 })
 
-app.use('/api', router)
-
-const onlineUsers = []
-
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
+  const onlineUsers = []
 
   socket.on('user_login', newUser => {
     if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
@@ -82,52 +68,36 @@ io.on('connection', function (socket) {
   socket.on('user_logout', async message => {
     if (typeof message !== 'object') message = JSON.parse(message)
 
-    redisClient.get(`user?id=${message.id}`, async (err, user) => {
-      if (err) throw new Error('Error: cache in socket')
-      if (user != null) {
-        const logoutUser = JSON.parse(user)
-        onlineUsers.forEach((user, index) => {
-          if (user.id === message.id) onlineUsers.splice(index, 1)
-        })
-        io.emit('user_leaves', {
-          status: 'logout',
-          data: logoutUser
-        })
-        io.emit('online_users', onlineUsers)
-      } else {
-        const logoutUser = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        onlineUsers.forEach((user, index) => {
-          if (user.id === message.id) onlineUsers.splice(index, 1)
-        })
-        io.emit('user_leaves', {
-          status: 'logout',
-          data: logoutUser
-        })
-        io.emit('online_users', onlineUsers)
-      }
+    const logoutUser = await getOrSetCache(`user?id=${message.id}`, async () => {
+      const user = await User.findByPk(message.id, {
+        attributes: ['id', 'account', 'name', 'avatar'],
+        raw: true
+      })
+      return user
     })
+
+    onlineUsers.forEach((user, index) => {
+      if (user.id === message.id) onlineUsers.splice(index, 1)
+    })
+    io.emit('user_leaves', {
+      status: 'logout',
+      data: logoutUser
+    })
+    io.emit('online_users', onlineUsers)
   })
 
   socket.on('user_send_message', async message => {
     if (typeof message !== 'object') message = JSON.parse(message)
 
-    redisClient.get(`user?id=${message.id}`, async (err, user) => {
-      if (err) io.emit('error_message', { status: 'Redis error', message })
-      if (user != null) {
-        const sender = JSON.parse(user)
-        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'redis' })
-      } else {
-        const sender = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
-        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'db' })
-      }
+    const sender = await getOrSetCache(`user?id=${message.id}`, async () => {
+      const user = await User.findByPk(message.id, {
+        attributes: ['id', 'account', 'name', 'avatar'],
+        raw: true
+      })
+      return user
     })
+
+    io.emit('new_message', { message: message.text, createdAt: Date(), sender })
   })
 })
 
