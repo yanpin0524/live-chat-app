@@ -17,7 +17,10 @@ const server = http.createServer(app)
 const { Server } = require('socket.io')
 const io = new Server(server, {
   cors: {
-    origin: 'http://localhost:8080',
+    origin: [
+      process.env.GITHUB_PAGE,
+      'http://localhost:8080'
+    ],
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
     credentials: true,
     allowedHeaders: ['Content-Type', 'Authorization']
