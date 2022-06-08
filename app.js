@@ -24,6 +24,10 @@ const io = new Server(server, {
   },
   allowEIO3: true
 })
+// const amqpAdapter = require('socket.io-amqp')
+// io.adapter(amqpAdapter(process.env.RABBITMQ_URL))
+const amqp = require('amqp')
+const rabbitMq = amqp.createConnection({ host: process.env.RABBITMQ_URL })
 
 const Redis = require('redis')
 const redisClient = Redis.createClient()
@@ -60,72 +64,142 @@ app.use((req, res, next) => {
 
 app.use('/api', router)
 
-io.on('connection', function (socket) {
-  console.log('socket.io 成功連線')
-  const onlineUsers = []
+const onlineUsers = []
 
-  socket.on('user_login', newUser => {
-    if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
-    if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
+rabbitMq.on('ready', function () {
+  io.on('connection', function (socket) {
+    console.log('socket.io 成功連線')
+    const queue = rabbitMq.queue('chatroom')
+    queue.bind('#')
 
-    io.emit('user_joins', {
-      status: 'login',
-      data: newUser
+    socket.on('user_login', newUser => {
+      if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
+      if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
+
+      io.emit('user_joins', {
+        status: 'login',
+        data: newUser
+      })
+      io.emit('online_users', onlineUsers)
     })
-    io.emit('online_users', onlineUsers)
-  })
 
-  socket.on('user_logout', async message => {
-    if (typeof message !== 'object') message = JSON.parse(message)
+    socket.on('user_logout', async message => {
+      if (typeof message !== 'object') message = JSON.parse(message)
 
-    redisClient.get(`user?id=${message.id}`, async (err, user) => {
-      if (err) throw new Error('Error: cache in socket')
-      if (user != null) {
-        const logoutUser = JSON.parse(user)
-        onlineUsers.forEach((user, index) => {
-          if (user.id === message.id) onlineUsers.splice(index, 1)
-        })
-        io.emit('user_leaves', {
-          status: 'logout',
-          data: logoutUser
-        })
-        io.emit('online_users', onlineUsers)
-      } else {
-        const logoutUser = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        onlineUsers.forEach((user, index) => {
-          if (user.id === message.id) onlineUsers.splice(index, 1)
-        })
-        io.emit('user_leaves', {
-          status: 'logout',
-          data: logoutUser
-        })
-        io.emit('online_users', onlineUsers)
-      }
+      redisClient.get(`user?id=${message.id}`, async (err, user) => {
+        if (err) throw new Error('Error: cache in socket')
+        if (user != null) {
+          const logoutUser = JSON.parse(user)
+          onlineUsers.forEach((user, index) => {
+            if (user.id === message.id) onlineUsers.splice(index, 1)
+          })
+          io.emit('user_leaves', {
+            status: 'logout',
+            data: logoutUser
+          })
+          io.emit('online_users', onlineUsers)
+        } else {
+          const logoutUser = await User.findByPk(message.id, {
+            attributes: ['id', 'account', 'name', 'avatar'],
+            raw: true
+          })
+          onlineUsers.forEach((user, index) => {
+            if (user.id === message.id) onlineUsers.splice(index, 1)
+          })
+          io.emit('user_leaves', {
+            status: 'logout',
+            data: logoutUser
+          })
+          io.emit('online_users', onlineUsers)
+        }
+      })
     })
-  })
 
-  socket.on('user_send_message', async message => {
-    if (typeof message !== 'object') message = JSON.parse(message)
+    socket.on('user_send_message', async message => {
+      if (typeof message !== 'object') message = JSON.parse(message)
 
-    redisClient.get(`user?id=${message.id}`, async (err, user) => {
-      if (err) io.emit('error_message', { status: 'Redis error', message })
-      if (user != null) {
-        const sender = JSON.parse(user)
-        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'redis' })
-      } else {
-        const sender = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
-        io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'db' })
-      }
+      redisClient.get(`user?id=${message.id}`, async (err, user) => {
+        if (err) io.emit('error_message', { status: 'Redis error', message })
+        if (user != null) {
+          const sender = JSON.parse(user)
+          io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'redis' })
+        } else {
+          const sender = await User.findByPk(message.id, {
+            attributes: ['id', 'account', 'name', 'avatar'],
+            raw: true
+          })
+          redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
+          io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'db' })
+        }
+      })
     })
   })
 })
+// io.on('connection', function (socket) {
+//   console.log('socket.io 成功連線')
+
+//   socket.on('user_login', newUser => {
+//     if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
+//     if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
+
+//     io.emit('user_joins', {
+//       status: 'login',
+//       data: newUser
+//     })
+//     io.emit('online_users', onlineUsers)
+//   })
+
+//   socket.on('user_logout', async message => {
+//     if (typeof message !== 'object') message = JSON.parse(message)
+
+//     redisClient.get(`user?id=${message.id}`, async (err, user) => {
+//       if (err) throw new Error('Error: cache in socket')
+//       if (user != null) {
+//         const logoutUser = JSON.parse(user)
+//         onlineUsers.forEach((user, index) => {
+//           if (user.id === message.id) onlineUsers.splice(index, 1)
+//         })
+//         io.emit('user_leaves', {
+//           status: 'logout',
+//           data: logoutUser
+//         })
+//         io.emit('online_users', onlineUsers)
+//       } else {
+//         const logoutUser = await User.findByPk(message.id, {
+//           attributes: ['id', 'account', 'name', 'avatar'],
+//           raw: true
+//         })
+//         onlineUsers.forEach((user, index) => {
+//           if (user.id === message.id) onlineUsers.splice(index, 1)
+//         })
+//         io.emit('user_leaves', {
+//           status: 'logout',
+//           data: logoutUser
+//         })
+//         io.emit('online_users', onlineUsers)
+//       }
+//     })
+//   })
+
+//   socket.on('user_send_message', async message => {
+//     if (typeof message !== 'object') message = JSON.parse(message)
+
+//     redisClient.get(`user?id=${message.id}`, async (err, user) => {
+//       if (err) io.emit('error_message', { status: 'Redis error', message })
+//       if (user != null) {
+//         const sender = JSON.parse(user)
+//         io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'redis' })
+//       } else {
+//         const sender = await User.findByPk(message.id, {
+//           attributes: ['id', 'account', 'name', 'avatar'],
+//           raw: true
+//         })
+//         redisClient.setex(`user?id=${message.id}`, DEFAULT_EXPIRATION, JSON.stringify(sender))
+//         io.emit('new_message', { message: message.text, createdAt: Date(), sender, query: 'db' })
+//       }
+//     })
+//   })
+// })
 
 server.listen(port, () =>
   console.log(`Example app listening on http://localhost:${port}`)
