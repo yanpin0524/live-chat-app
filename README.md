@@ -7,7 +7,7 @@
 
 ## 產品功能
 
-## 雲端部署
+## 雲端部署(https://irene289.github.io/alphatown-vue-socket/#/)<br>
 
 ## 專案後端開發人員
 > [Kate-Chu](https://github.com/Kate-Chu)<br>

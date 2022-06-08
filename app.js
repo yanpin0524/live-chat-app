@@ -50,9 +50,9 @@ app.use((req, res, next) => {
   return next()
 })
 
+const onlineUsers = []
 io.on('connection', function (socket) {
   console.log('socket.io 成功連線')
-  const onlineUsers = []
 
   socket.on('user_login', newUser => {
     if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
