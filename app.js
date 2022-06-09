@@ -2,7 +2,7 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config()
 }
 const express = require('express')
-const port = process.env.PORT || 3000
+const port = process.env.PORT || 8000
 const app = express()
 const cors = require('cors')
 const session = require('express-session')
@@ -16,10 +16,11 @@ const getOrSetCache = require('./utilities/cache')
 const http = require('http')
 const server = http.createServer(app)
 const { Server } = require('socket.io')
-// const amqpAdapter = require('socket.io-amqp')
-// io.adapter(amqpAdapter(process.env.RABBITMQ_URL))
-const amqp = require('amqp')
-const rabbitMq = amqp.createConnection({ host: process.env.RABBITMQ_URL })
+
+const fileUpload = require('express-fileupload')
+const Broker = require('./src/services/rabbitMQ')
+
+const RMQProducer = new Broker().init()
 
 const io = new Server(server, {
   cors: {
@@ -43,76 +44,89 @@ app.use(
 )
 app.use(passport.initialize())
 app.use(passport.session())
-
 app.use((req, res, next) => {
   res.locals.user = getUser(req)
   next()
 })
 
-app.use('/api', router)
 app.use((req, res, next) => {
   req.io = io
   return next()
 })
 
+app.use('/api/upload', fileUpload())
+app.use(async (req, res, next) => {
+  try {
+    req.RMQProducer = await RMQProducer
+    next()
+  } catch (error) {
+    process.exit(1)
+  }
+})
+
+app.use('/api', router)
+
 const onlineUsers = []
+io.on('connection', function (socket) {
+  console.log('socket.io 成功連線')
 
-rabbitMq.on('ready', function () {
-  io.on('connection', function (socket) {
-    console.log('socket.io 成功連線')
-    const queue = rabbitMq.queue('chatroom')
-    queue.bind('#')
+  socket.on('user_login', newUser => {
+    if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
+    if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
 
-    socket.on('user_login', newUser => {
-      if (typeof newUser !== 'object') newUser = JSON.parse(newUser)
-      if (!onlineUsers.find(userItem => userItem.id === newUser.id)) onlineUsers.push(newUser)
+    io.emit('user_joins', {
+      status: 'login',
+      data: newUser
+    })
+    io.emit('online_users', onlineUsers)
+  })
 
-      io.emit('user_joins', {
-        status: 'login',
-        data: newUser
+  socket.on('user_logout', async message => {
+    if (typeof message !== 'object') message = JSON.parse(message)
+
+    const logoutUser = await getOrSetCache(`user?id=${message.id}`, async () => {
+      const user = await User.findByPk(message.id, {
+        attributes: ['id', 'account', 'name', 'avatar'],
+        raw: true
       })
-      io.emit('online_users', onlineUsers)
+      return user
     })
 
-    socket.on('user_logout', async message => {
-      if (typeof message !== 'object') message = JSON.parse(message)
+    onlineUsers.forEach((user, index) => {
+      if (user.id === message.id) onlineUsers.splice(index, 1)
+    })
+    io.emit('user_leaves', {
+      status: 'logout',
+      data: logoutUser
+    })
+    io.emit('online_users', onlineUsers)
+  })
 
-      const logoutUser = await getOrSetCache(`user?id=${message.id}`, async () => {
-        const user = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        return user
-      })
+  socket.on('user_send_message', async message => {
+    if (typeof message !== 'object') message = JSON.parse(message)
 
-      onlineUsers.forEach((user, index) => {
-        if (user.id === message.id) onlineUsers.splice(index, 1)
+    const sender = await getOrSetCache(`user?id=${message.id}`, async () => {
+      const user = await User.findByPk(message.id, {
+        attributes: ['id', 'account', 'name', 'avatar'],
+        raw: true
       })
-      io.emit('user_leaves', {
-        status: 'logout',
-        data: logoutUser
-      })
-      io.emit('online_users', onlineUsers)
+      return user
     })
 
-    socket.on('user_send_message', async message => {
-      if (typeof message !== 'object') message = JSON.parse(message)
-
-      const sender = await getOrSetCache(`user?id=${message.id}`, async () => {
-        const user = await User.findByPk(message.id, {
-          attributes: ['id', 'account', 'name', 'avatar'],
-          raw: true
-        })
-        return user
-      })
-
-      io.emit('new_message', { message: message.text, createdAt: Date(), sender })
-    })
+    io.emit('new_message', { message: message.text, createdAt: Date(), sender })
   })
 })
 
 server.listen(port, () =>
   console.log(`Example app listening on http://localhost:${port}`)
 )
+
+process.on('SIGINT', async () => {
+  process.exit(1)
+})
+process.on('exit', code => {
+  RMQProducer.channel.close()
+  RMQProducer.connection.close()
+})
 
 module.exports = app
