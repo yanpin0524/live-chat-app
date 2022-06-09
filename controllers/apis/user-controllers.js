@@ -3,6 +3,7 @@ const bcrypt = require('bcryptjs')
 const { User } = require('../../models')
 const helpers = require('../../utilities/_helpers')
 const { Op } = require('sequelize')
+const publishToExchange = require('../../src/queueWorkers/producer')
 const Redis = require('redis')
 const redisClient = Redis.createClient()
 const DEFAULT_EXPIRATION = 3600
@@ -128,7 +129,6 @@ const userController = {
       const me = helpers.getUser(req)
       if (!me) return res.status(510).json({ status: 'error', message: '未存取到登入資料' })
       if (me.id !== Number(req.params.id)) return res.status(510).json({ status: 'error', message: '你沒有編輯權限' })
-
       const { files } = req
       const avatar = await helpers.imgurFileHandler(files?.avatar?.[0]) || me.avatar
 
@@ -172,6 +172,26 @@ const userController = {
       })
     } catch (err) {
       next(err)
+    }
+  },
+
+  uploadImage: async (req, res) => {
+    const { data } = req.files.image
+    try {
+      const message = await helpers.saveImage(data)
+      await publishToExchange(req.RMQProducer, {
+        message,
+        routingKey: 'image'
+      })
+      res.status(200).json({
+        status: 'success',
+        message: 'File uploaded successfully!'
+      })
+    } catch (error) {
+      res.status(400).json({
+        status: 'error',
+        message: 'File not uploaded!'
+      })
     }
   }
 }

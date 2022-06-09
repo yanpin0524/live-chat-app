@@ -1,9 +1,9 @@
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config()
 }
-
 const amqp = require('amqplib')
 const _ = require('lodash')
+
 class MessageBroker {
   constructor () {
     this.queues = {}

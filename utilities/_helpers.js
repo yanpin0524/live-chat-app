@@ -6,6 +6,10 @@ const imgur = require('imgur')
 const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID
 imgur.setClientId(IMGUR_CLIENT_ID)
 
+const fs = require('fs')
+const { promisify } = require('util')
+const { v4: uuid } = require('uuid')
+
 const imgurFileHandler = file => {
   if (!file) return null
   return new Promise((resolve, reject) => {
@@ -17,7 +21,24 @@ const imgurFileHandler = file => {
   })
 }
 
+const saveImage = data => {
+  const writeFile = promisify(fs.writeFile)
+  return new Promise((resolve, reject) => {
+    if (!data) {
+      reject(new Error('File not available!'))
+    }
+    try {
+      const fileName = `img_${uuid()}.jpg`
+
+      writeFile(`./src/uploads/original/${fileName}`, data)
+
+      resolve(fileName)
+    } catch (error) {}
+  })
+}
+
 module.exports = {
   getUser,
-  imgurFileHandler
+  imgurFileHandler,
+  saveImage
 }

@@ -18,6 +18,8 @@ router.put('/user/:id', authenticated, upload.fields([
 ]), userController.editUser)
 router.post('/user', userController.signUp)
 
+router.post('/upload', authenticated, userController.uploadImage)
+
 router.use('/', apiErrorHandler)
 
 module.exports = router

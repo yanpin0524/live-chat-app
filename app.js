@@ -2,7 +2,7 @@ if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config()
 }
 const express = require('express')
-const port = process.env.PORT || 3000
+const port = process.env.PORT || 8000
 const app = express()
 const cors = require('cors')
 const session = require('express-session')
@@ -16,6 +16,12 @@ const getOrSetCache = require('./utilities/cache')
 const http = require('http')
 const server = http.createServer(app)
 const { Server } = require('socket.io')
+
+const fileUpload = require('express-fileupload')
+const Broker = require('./src/services/rabbitMQ')
+
+const RMQProducer = new Broker().init()
+
 const io = new Server(server, {
   cors: {
     origin: [
@@ -38,17 +44,27 @@ app.use(
 )
 app.use(passport.initialize())
 app.use(passport.session())
-
 app.use((req, res, next) => {
   res.locals.user = getUser(req)
   next()
 })
 
-app.use('/api', router)
 app.use((req, res, next) => {
   req.io = io
   return next()
 })
+
+app.use('/api/upload', fileUpload())
+app.use(async (req, res, next) => {
+  try {
+    req.RMQProducer = await RMQProducer
+    next()
+  } catch (error) {
+    process.exit(1)
+  }
+})
+
+app.use('/api', router)
 
 const onlineUsers = []
 io.on('connection', function (socket) {
@@ -104,5 +120,13 @@ io.on('connection', function (socket) {
 server.listen(port, () =>
   console.log(`Example app listening on http://localhost:${port}`)
 )
+
+process.on('SIGINT', async () => {
+  process.exit(1)
+})
+process.on('exit', code => {
+  RMQProducer.channel.close()
+  RMQProducer.connection.close()
+})
 
 module.exports = app

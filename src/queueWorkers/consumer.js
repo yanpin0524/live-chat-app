@@ -4,7 +4,7 @@ const { promisify } = require('util')
 
 const Broker = require('../services/rabbitMQ')
 
-const { fileExists } = require('../utils/functions')
+const { fileExists } = require('../utils/function')
 
 const RMQConsumer = new Broker().init()
 const pipeline = promisify(require('stream').pipeline)
