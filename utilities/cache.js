@@ -1,8 +1,7 @@
 const Redis = require('redis')
-const port = process.env.PORT || 6379
 const client = {
   host: process.env.REDIS_URL || '127.0.0.1',
-  port: port
+  port: process.env.PORT || 6379
 }
 const redisClient = Redis.createClient(client)
 const DEFAULT_EXPIRATION = 3600
