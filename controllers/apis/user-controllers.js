@@ -185,7 +185,8 @@ const userController = {
       })
       res.status(200).json({
         status: 'success',
-        message: 'File uploaded successfully!'
+        message: 'File uploaded successfully!',
+        url: message
       })
     } catch (error) {
       res.status(400).json({
