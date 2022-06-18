@@ -11,7 +11,7 @@
 
 ### 一般使用者首頁
 
-![image](https://github.com/yanpin0524/live-chat-app/blob/master/public/index.png)
+![image](https://github.com/yanpin0524/live-chat-app/blob/main/public/intro.png)
 
 ## API 文件
 
