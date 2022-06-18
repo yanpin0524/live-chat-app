@@ -23,11 +23,13 @@
 
 ## 專案後端開發人員
 
-> [Kate-Chu](https://github.com/Kate-Chu)<br> > [yanpin0524](https://github.com/yanpin0524)
+> [Kate-Chu](https://github.com/Kate-Chu)<br>
+> [yanpin0524](https://github.com/yanpin0524)
 
 ## 專案前端開發人員
 
-> [SeijoHuang](https://github.com/SeijoHuang)<br> > [IreneLIU](https://github.com/Irene289)
+> [SeijoHuang](https://github.com/SeijoHuang)<br>
+> [IreneLIU](https://github.com/Irene289)
 
 ## 完整專案本地安裝流程
 
